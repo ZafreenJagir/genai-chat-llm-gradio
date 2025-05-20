@@ -23,36 +23,75 @@ Run the application locally with demo.launch(). Optionally deploy it to the clou
 ### PROGRAM:
 
 ```
+
+import os
+import io
+import IPython.display
+from PIL import Image
+import base64 
+import requests 
+requests.adapters.DEFAULT_TIMEOUT = 60
+
+from dotenv import load_dotenv, find_dotenv
+_ = load_dotenv(find_dotenv()) # read local .env file
+hf_api_key = os.environ['HF_API_KEY']
+
+# Helper function
+import requests, json
+from text_generation import Client
+
+#FalcomLM-instruct endpoint on the text_generation library
+client = Client(os.environ['HF_API_FALCOM_BASE'], headers={"Authorization": f"Basic {hf_api_key}"}, timeout=120)
+
+prompt = "Has math been invented or discovered?"
+client.generate(prompt, max_new_tokens=256).generated_text
+
+#Back to Lesson 2, time flies!
 import gradio as gr
-from transformers import pipeline
+def generate(input, slider):
+    output = client.generate(input, max_new_tokens=slider).generated_text
+    return output
 
-# Load a pre-trained LLM from Hugging Face
-chat_model = pipeline("text-generation", model="gpt2", max_length=200)
+demo = gr.Interface(fn=generate, 
+                    inputs=[gr.Textbox(label="Prompt"), 
+                            gr.Slider(label="Max new tokens", 
+                                      value=20,  
+                                      maximum=1024, 
+                                      minimum=1)], 
+                    outputs=[gr.Textbox(label="Completion")])
 
-# Define the function to interact with the LLM
-def chat_with_llm(user_input):
-    try:
-        # Generate a response
-        response = chat_model(user_input, max_length=150, num_return_sequences=1)
-        return response[0]['generated_text']
-    except Exception as e:
-        return f"Error: {str(e)}"
+gr.close_all()
+demo.launch(share=True, server_port=int(os.environ['PORT1']))
 
-# Design the Gradio Blocks UI
+def format_chat_prompt(message, chat_history):
+    prompt = ""
+    for turn in chat_history:
+        user_message, bot_message = turn
+        prompt = f"{prompt}\nUser: {user_message}\nAssistant: {bot_message}"
+    prompt = f"{prompt}\nUser: {message}\nAssistant:"
+    return prompt
+
+def respond(message, chat_history):
+        formatted_prompt = format_chat_prompt(message, chat_history)
+        bot_message = client.generate(formatted_prompt,
+                                     max_new_tokens=1024,
+                                     stop_sequences=["\nUser:", "<|endoftext|>"]).generated_text
+        chat_history.append((message, bot_message))
+        return "", chat_history
+
 with gr.Blocks() as demo:
-    gr.Markdown("Chat with LLM")
-    with gr.Row():
-        with gr.Column():
-            user_input = gr.Textbox(label="Enter your query:", placeholder="Type your message here...")
-            submit_button = gr.Button("Submit")
-        with gr.Column():
-            response_output = gr.Textbox(label="LLM Response:", lines=10, interactive=False)
-    
-    # Add functionality
-    submit_button.click(chat_with_llm, inputs=[user_input], outputs=[response_output])
+    chatbot = gr.Chatbot(height=240) #just to fit the notebook
+    msg = gr.Textbox(label="Prompt")
+    btn = gr.Button("Submit")
+    clear = gr.ClearButton(components=[msg, chatbot], value="Clear console")
 
-# Run the application
-demo.launch()
+    btn.click(respond, inputs=[msg, chatbot], outputs=[msg, chatbot])
+    msg.submit(respond, inputs=[msg, chatbot], outputs=[msg, chatbot]) #Press enter to submit
+
+gr.close_all()
+demo.launch(share=True, server_port=int(os.environ['PORT4']))
+
+gr.close_all()
 
 ```
 
